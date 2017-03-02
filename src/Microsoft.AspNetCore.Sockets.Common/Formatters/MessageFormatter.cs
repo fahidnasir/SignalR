@@ -2,6 +2,7 @@
 // Licensed under the Apache License, Version 2.0. See License.txt in the project root for license information.
 
 using System;
+using System.Buffers;
 
 namespace Microsoft.AspNetCore.Sockets.Formatters
 {
@@ -13,7 +14,7 @@ namespace Microsoft.AspNetCore.Sockets.Formatters
         public static readonly string TextContentType = "application/vnd.microsoft.aspnetcore.endpoint-messages.v1+text";
         public static readonly string BinaryContentType = "application/vnd.microsoft.aspnetcore.endpoint-messages.v1+binary";
 
-        public static bool TryFormatMessage(Message message, Span<byte> buffer, MessageFormat format, out int bytesWritten)
+        public static bool TryFormatMessage(Message message, IOutput output, MessageFormat format)
         {
             if (!message.EndOfMessage)
             {
@@ -24,8 +25,8 @@ namespace Microsoft.AspNetCore.Sockets.Formatters
             }
 
             return format == MessageFormat.Text ?
-                TextMessageFormatter.TryFormatMessage(message, buffer, out bytesWritten) :
-                BinaryMessageFormatter.TryFormatMessage(message, buffer, out bytesWritten);
+                TextMessageFormatter.TryWriteMessage(message, output) :
+                BinaryMessageFormatter.TryWriteMessage(message, output);
         }
 
         public static bool TryParseMessage(ReadOnlySpan<byte> buffer, MessageFormat format, out Message message, out int bytesConsumed)
@@ -69,11 +70,6 @@ namespace Microsoft.AspNetCore.Sockets.Formatters
             }
 
             throw new ArgumentException($"Invalid message format: 0x{formatIndicator:X}", nameof(formatIndicator));
-        }
-
-        public static bool TryParseMessage(ReadOnlySpan<byte> payload, object messageFormat)
-        {
-            throw new NotImplementedException();
         }
     }
 }
