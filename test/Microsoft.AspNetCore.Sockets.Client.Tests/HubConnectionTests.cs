@@ -28,7 +28,7 @@ namespace Microsoft.AspNetCore.SignalR.Client.Tests
         [Fact]
         public async Task CanDisposeNotStartedHubConnection()
         {
-            await new HubConnection(new Uri("http://fakeuri.org"), Mock.Of<IInvocationAdapter>(), Mock.Of<ILoggerFactory>())
+            await new HubConnection(new Uri("http://fakeuri.org"), Mock.Of<IInvocationAdapter>(), new LoggerFactory())
                 .DisposeAsync();
         }
 
