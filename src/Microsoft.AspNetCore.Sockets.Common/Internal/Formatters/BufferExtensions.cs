@@ -1,9 +1,6 @@
-﻿using System;
-using System.Buffers;
-
-namespace Microsoft.AspNetCore.Sockets.Formatters
+﻿namespace System.Buffers
 {
-    internal static class ReadOnlyBytesExtensions
+    internal static class BufferExtensions
     {
         public static ReadOnlySpan<byte> ToSingleSpan(this ReadOnlyBytes self)
         {

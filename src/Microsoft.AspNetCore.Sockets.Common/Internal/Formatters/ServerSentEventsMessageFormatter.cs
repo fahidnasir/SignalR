@@ -7,7 +7,7 @@ using System.Buffers;
 using System.Text;
 using System.Text.Formatting;
 
-namespace Microsoft.AspNetCore.Sockets.Formatters
+namespace Microsoft.AspNetCore.Sockets.Internal.Formatters
 {
     public static class ServerSentEventsMessageFormatter
     {

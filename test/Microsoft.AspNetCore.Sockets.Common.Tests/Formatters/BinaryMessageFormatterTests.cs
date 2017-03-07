@@ -2,7 +2,9 @@
 // Licensed under the Apache License, Version 2.0. See License.txt in the project root for license information.
 
 using System;
+using System.Buffers;
 using System.Collections.Generic;
+using Microsoft.AspNetCore.Sockets.Internal.Formatters;
 using Microsoft.AspNetCore.Sockets.Tests;
 using Microsoft.AspNetCore.Sockets.Tests.Formatters;
 using Xunit;
@@ -41,7 +43,7 @@ namespace Microsoft.AspNetCore.Sockets.Formatters.Tests
             var output = new ArrayOutput(chunkSize: 8); // Use small chunks to test Advance/Enlarge and partial payload writing
             foreach (var message in messages)
             {
-                Assert.True(MessageFormatter.TryFormatMessage(message, output, MessageFormat.Binary));
+                Assert.True(MessageFormatter.TryWriteMessage(message, output, MessageFormat.Binary));
             }
 
             Assert.Equal(expectedEncoding, output.ToArray());
@@ -55,7 +57,7 @@ namespace Microsoft.AspNetCore.Sockets.Formatters.Tests
             var message = MessageTestUtils.CreateMessage(payload);
             var output = new ArrayOutput(chunkSize: 8); // Use small chunks to test Advance/Enlarge and partial payload writing
 
-            Assert.True(MessageFormatter.TryFormatMessage(message, output, MessageFormat.Binary));
+            Assert.True(MessageFormatter.TryWriteMessage(message, output, MessageFormat.Binary));
 
             Assert.Equal(encoded, output.ToArray());
         }
@@ -73,7 +75,7 @@ namespace Microsoft.AspNetCore.Sockets.Formatters.Tests
             var message = MessageTestUtils.CreateMessage(payload, messageType);
             var output = new ArrayOutput(chunkSize: 8); // Use small chunks to test Advance/Enlarge and partial payload writing
 
-            Assert.True(MessageFormatter.TryFormatMessage(message, output, MessageFormat.Binary));
+            Assert.True(MessageFormatter.TryWriteMessage(message, output, MessageFormat.Binary));
 
             Assert.Equal(encoded, output.ToArray());
         }
@@ -134,11 +136,11 @@ namespace Microsoft.AspNetCore.Sockets.Formatters.Tests
                     /* type: */ 0x02, // Error
                     /* body: */ 0x53, 0x65, 0x72, 0x76, 0x65, 0x72, 0x20, 0x45, 0x72, 0x72, 0x6F, 0x72
             };
-            var buffer = encoded.Slice();
+            var reader = new BytesReader(new ReadOnlyBytes(encoded));
 
             var messages = new List<Message>();
             var consumedTotal = 0;
-            while (MessageFormatter.TryParseMessage(buffer, MessageFormat.Binary, out var message, out var consumed))
+            while (MessageFormatter.TryParseMessage(encoded, MessageFormat.Binary, out var message, out var consumed))
             {
                 messages.Add(message);
                 consumedTotal += consumed;
