@@ -5,7 +5,7 @@ using System.Diagnostics;
 using System.Linq;
 using System.Text;
 
-namespace Microsoft.AspNetCore.Sockets.Tests.Formatters
+namespace Microsoft.AspNetCore.Sockets.Tests.Internal.Formatters
 {
     internal class ArrayOutput : IOutput
     {

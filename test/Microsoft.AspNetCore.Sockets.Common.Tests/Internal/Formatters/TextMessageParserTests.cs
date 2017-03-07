@@ -1,0 +1,108 @@
+﻿// Copyright (c) .NET Foundation. All rights reserved.
+// Licensed under the Apache License, Version 2.0. See License.txt in the project root for license information.
+
+using System;
+using System.Buffers;
+using System.Collections.Generic;
+using System.Text;
+using Microsoft.AspNetCore.Sockets.Internal.Formatters;
+using Microsoft.AspNetCore.Sockets.Tests;
+using Xunit;
+
+namespace Microsoft.AspNetCore.Sockets.Common.Tests.Internal.Formatters
+{
+    public class TextMessageParserTests
+    {
+        [Theory]
+        [InlineData("0:T:;", MessageType.Text, "")]
+        [InlineData("3:T:ABC;", MessageType.Text, "ABC")]
+        [InlineData("11:T:A\nR\rC\r\n;DEF;", MessageType.Text, "A\nR\rC\r\n;DEF")]
+        [InlineData("0:C:;", MessageType.Close, "")]
+        [InlineData("17:C:Connection Closed;", MessageType.Close, "Connection Closed")]
+        [InlineData("0:E:;", MessageType.Error, "")]
+        [InlineData("12:E:Server Error;", MessageType.Error, "Server Error")]
+        public void ReadTextMessage(string encoded, MessageType messageType, string payload)
+        {
+            var parser = new MessageParser();
+            var buffer = Encoding.UTF8.GetBytes(encoded);
+            var reader = new BytesReader(buffer);
+
+            Assert.True(parser.TryParseMessage(ref reader, MessageFormat.Text, out var message));
+            Assert.Equal(reader.Index, buffer.Length);
+
+            MessageTestUtils.AssertMessage(message, messageType, payload);
+        }
+
+        [Theory]
+        [InlineData("0:B:;", new byte[0])]
+        [InlineData("8:B:q83vEg==;", new byte[] { 0xAB, 0xCD, 0xEF, 0x12 })]
+        [InlineData("8:B:q83vEjQ=;", new byte[] { 0xAB, 0xCD, 0xEF, 0x12, 0x34 })]
+        [InlineData("8:B:q83vEjRW;", new byte[] { 0xAB, 0xCD, 0xEF, 0x12, 0x34, 0x56 })]
+        public void ReadBinaryMessage(string encoded, byte[] payload)
+        {
+            var parser = new MessageParser();
+            var buffer = Encoding.UTF8.GetBytes(encoded);
+            var reader = new BytesReader(buffer);
+
+            Assert.True(parser.TryParseMessage(ref reader, MessageFormat.Text, out var message));
+            Assert.Equal(reader.Index, buffer.Length);
+
+            MessageTestUtils.AssertMessage(message, MessageType.Binary, payload);
+        }
+
+        [Fact]
+        public void ReadMultipleMessages()
+        {
+            const string encoded = "0:B:;14:T:Hello,\r\nWorld!;1:C:A;12:E:Server Error;";
+            var parser = new MessageParser();
+            var buffer = Encoding.UTF8.GetBytes(encoded);
+            var reader = new BytesReader(buffer);
+
+            var messages = new List<Message>();
+            var consumedTotal = 0;
+            while (parser.TryParseMessage(ref reader, MessageFormat.Text, out var message))
+            {
+                messages.Add(message);
+            }
+
+            Assert.Equal(consumedTotal, Encoding.UTF8.GetByteCount(encoded));
+
+            Assert.Equal(4, messages.Count);
+            MessageTestUtils.AssertMessage(messages[0], MessageType.Binary, new byte[0]);
+            MessageTestUtils.AssertMessage(messages[1], MessageType.Text, "Hello,\r\nWorld!");
+            MessageTestUtils.AssertMessage(messages[2], MessageType.Close, "A");
+            MessageTestUtils.AssertMessage(messages[3], MessageType.Error, "Server Error");
+        }
+
+        [Theory]
+        [InlineData("")]
+        [InlineData("5:T:A")]
+        [InlineData("5:T:ABCDE")]
+        [InlineData("5:T:ABCDEF")]
+        public void ReadIncompleteMessages(string encoded)
+        {
+            var parser = new MessageParser();
+            var buffer = Encoding.UTF8.GetBytes(encoded);
+            var reader = new BytesReader(buffer);
+            Assert.False(parser.TryParseMessage(ref reader, MessageFormat.Text, out _));
+        }
+
+        [Theory]
+        [InlineData("ABC", "")]
+        [InlineData("1230450945", "")]
+        [InlineData("5:X:ABCDEF", "")]
+        [InlineData("1:asdf", "Unknown message type: 'a'")]
+        [InlineData("1::", "Unknown message type: ':'")]
+        [InlineData("1:AB:", "Unknown message type: 'A'")]
+        [InlineData("1029348109238412903849023841290834901283409128349018239048102394:X:ABCDEF", "Invalid length: '1029348109238412903849023841290834901283409128349018239048102394'")]
+        [InlineData("12ab34:", "Invalid length: '12ab34'")]
+        public void ReadInvalidMessages(string encoded, string expectedMessage)
+        {
+            var parser = new MessageParser();
+            var buffer = Encoding.UTF8.GetBytes(encoded);
+            var reader = new BytesReader(buffer);
+            var ex = Assert.Throws<FormatException>(() => parser.TryParseMessage(ref reader, MessageFormat.Text, out _));
+            Assert.Equal(expectedMessage, ex.Message);
+        }
+    }
+}

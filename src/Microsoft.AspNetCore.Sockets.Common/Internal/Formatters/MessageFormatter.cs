@@ -8,16 +8,13 @@ namespace Microsoft.AspNetCore.Sockets.Internal.Formatters
 {
     public class MessageFormatter
     {
-        private TextMessageFormatter _textFormatter = new TextMessageFormatter();
-        private BinaryMessageFormatter _binaryFormatter = new BinaryMessageFormatter();
+        public static readonly char TextFormatIndicator = 'T';
+        public static readonly char BinaryFormatIndicator = 'B';
 
-        public void Reset()
-        {
-            _textFormatter.Reset();
-            _binaryFormatter.Reset();
-        }
+        public static readonly string TextContentType = "application/vnd.microsoft.aspnetcore.endpoint-messages.v1+text";
+        public static readonly string BinaryContentType = "application/vnd.microsoft.aspnetcore.endpoint-messages.v1+binary";
 
-        public bool TryWriteMessage(Message message, IOutput output, MessageFormat format)
+        public static bool TryWriteMessage(Message message, IOutput output, MessageFormat format)
         {
             if (!message.EndOfMessage)
             {
@@ -28,15 +25,28 @@ namespace Microsoft.AspNetCore.Sockets.Internal.Formatters
             }
 
             return format == MessageFormat.Text ?
-                _textFormatter.TryWriteMessage(message, output) :
-                _binaryFormatter.TryWriteMessage(message, output);
+                TextMessageFormatter.TryWriteMessage(message, output) :
+                BinaryMessageFormatter.TryWriteMessage(message, output);
         }
 
-        public bool TryParseMessage(ref BytesReader buffer, MessageFormat format, out Message message)
+        public static string GetContentType(MessageFormat messageFormat)
         {
-            return format == MessageFormat.Text ?
-                _textFormatter.TryParseMessage(ref buffer, out message) :
-                _binaryFormatter.TryParseMessage(ref buffer, out message);
+            switch (messageFormat)
+            {
+                case MessageFormat.Text: return TextContentType;
+                case MessageFormat.Binary: return BinaryContentType;
+                default: throw new ArgumentException($"Invalid message format: {messageFormat}", nameof(messageFormat));
+            }
+        }
+
+        public static char GetFormatIndicator(MessageFormat messageFormat)
+        {
+            switch (messageFormat)
+            {
+                case MessageFormat.Text: return TextFormatIndicator;
+                case MessageFormat.Binary: return BinaryFormatIndicator;
+                default: throw new ArgumentException($"Invalid message format: {messageFormat}", nameof(messageFormat));
+            }
         }
     }
 }

@@ -2,15 +2,14 @@
 // Licensed under the Apache License, Version 2.0. See License.txt in the project root for license information.
 
 using System;
-using System.Collections.Generic;
-using System.IO;
+using System.Buffers;
 using System.Net;
 using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Sockets.Client.Internal;
-using Microsoft.AspNetCore.Sockets.Formatters;
+using Microsoft.AspNetCore.Sockets.Internal.Formatters;
 using Microsoft.Extensions.Internal;
 using Microsoft.Extensions.Logging;
 
@@ -26,6 +25,8 @@ namespace Microsoft.AspNetCore.Sockets.Client
         private IChannelConnection<Message> _application;
         private Task _sender;
         private Task _poller;
+        private MessageParser _parser = new MessageParser();
+
         private readonly CancellationTokenSource _transportCts = new CancellationTokenSource();
 
         public Task Running { get; private set; }
@@ -85,18 +86,36 @@ namespace Microsoft.AspNetCore.Sockets.Client
                     }
                     else
                     {
-                        // Read the whole payload
+                        // Until Pipeline starts natively supporting BytesReader, this is the easiest way to do this.
                         var payload = await response.Content.ReadAsByteArrayAsync();
-
-                        foreach (var message in ReadMessages(payload))
+                        var reader = new BytesReader(payload);
+                        if(reader.Unread.Length == 0)
                         {
-                            while (!_application.Output.TryWrite(message))
+                            throw new FormatException("Response from the server is missing format specifier");
+                        }
+                        var messageFormat = MessageParser.GetFormat(reader.Unread[0]);
+                        reader.Advance(1);
+
+                        _parser.Reset();
+                        while(_parser.TryParseMessage(ref reader, messageFormat, out var message))
+                        {
+                            while(!_application.Output.TryWrite(message))
                             {
-                                if (cancellationToken.IsCancellationRequested || !await _application.Output.WaitToWriteAsync(cancellationToken))
+                                if(cancellationToken.IsCancellationRequested || !await _application.Output.WaitToWriteAsync(cancellationToken))
                                 {
                                     return;
                                 }
                             }
+                        }
+
+                        // Since we pre-read the whole payload, we know that when this fails we have read everything.
+                        // Once Pipelines natively support BytesReader, we could get into situations where the data for
+                        // a message just isn't available yet.
+
+                        // If there's still data, we hit an incomplete message
+                        if(reader.Unread.Length > 0)
+                        {
+                            throw new FormatException("Incomplete message");
                         }
                     }
                 }
@@ -114,28 +133,6 @@ namespace Microsoft.AspNetCore.Sockets.Client
             {
                 // Make sure the send loop is terminated
                 _transportCts.Cancel();
-            }
-        }
-
-        private IEnumerable<Message> ReadMessages(ReadOnlySpan<byte> payload)
-        {
-            if (payload.Length == 0)
-            {
-                yield break;
-            }
-
-            var messageFormat = MessageFormatter.GetFormat(payload[0]);
-            payload = payload.Slice(1);
-
-            while (payload.Length > 0)
-            {
-                if (!MessageFormatter.TryParseMessage(payload, messageFormat, out var message, out var consumed))
-                {
-                    throw new InvalidDataException("Invalid message payload from server");
-                }
-
-                payload = payload.Slice(consumed);
-                yield return message;
             }
         }
 

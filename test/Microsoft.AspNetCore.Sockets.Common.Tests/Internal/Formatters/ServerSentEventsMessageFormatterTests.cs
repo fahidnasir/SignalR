@@ -3,11 +3,10 @@
 
 using System;
 using System.Text;
-using Microsoft.AspNetCore.Sockets.Tests;
-using Microsoft.AspNetCore.Sockets.Tests.Formatters;
+using Microsoft.AspNetCore.Sockets.Internal.Formatters;
 using Xunit;
 
-namespace Microsoft.AspNetCore.Sockets.Formatters.Tests
+namespace Microsoft.AspNetCore.Sockets.Tests.Internal.Formatters
 {
     public class ServerSentEventsMessageFormatterTests
     {

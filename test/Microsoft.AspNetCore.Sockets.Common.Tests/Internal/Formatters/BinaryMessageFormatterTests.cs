@@ -5,11 +5,9 @@ using System;
 using System.Buffers;
 using System.Collections.Generic;
 using Microsoft.AspNetCore.Sockets.Internal.Formatters;
-using Microsoft.AspNetCore.Sockets.Tests;
-using Microsoft.AspNetCore.Sockets.Tests.Formatters;
 using Xunit;
 
-namespace Microsoft.AspNetCore.Sockets.Formatters.Tests
+namespace Microsoft.AspNetCore.Sockets.Tests.Internal.Formatters
 {
     public partial class BinaryMessageFormatterTests
     {
@@ -86,85 +84,9 @@ namespace Microsoft.AspNetCore.Sockets.Formatters.Tests
             var message = new Message(new byte[0], MessageType.Binary, endOfMessage: false);
             var output = new ArrayOutput(chunkSize: 8); // Use small chunks to test Advance/Enlarge and partial payload writing
             var ex = Assert.Throws<ArgumentException>(() =>
-                MessageFormatter.TryFormatMessage(message, output, MessageFormat.Binary));
+                MessageFormatter.TryWriteMessage(message, output, MessageFormat.Binary));
             Assert.Equal($"Cannot format message where endOfMessage is false using this format{Environment.NewLine}Parameter name: message", ex.Message);
             Assert.Equal("message", ex.ParamName);
-        }
-
-        [Theory]
-        [InlineData(new byte[] { 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 }, MessageType.Text, "")]
-        [InlineData(new byte[] { 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x03, 0x00, 0x41, 0x42, 0x43 }, MessageType.Text, "ABC")]
-        [InlineData(new byte[] { 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x0B, 0x00, 0x41, 0x0A, 0x52, 0x0D, 0x43, 0x0D, 0x0A, 0x3B, 0x44, 0x45, 0x46 }, MessageType.Text, "A\nR\rC\r\n;DEF")]
-        [InlineData(new byte[] { 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x03 }, MessageType.Close, "")]
-        [InlineData(new byte[] { 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x11, 0x03, 0x43, 0x6F, 0x6E, 0x6E, 0x65, 0x63, 0x74, 0x69, 0x6F, 0x6E, 0x20, 0x43, 0x6C, 0x6F, 0x73, 0x65, 0x64 }, MessageType.Close, "Connection Closed")]
-        [InlineData(new byte[] { 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02 }, MessageType.Error, "")]
-        [InlineData(new byte[] { 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x0C, 0x02, 0x53, 0x65, 0x72, 0x76, 0x65, 0x72, 0x20, 0x45, 0x72, 0x72, 0x6F, 0x72 }, MessageType.Error, "Server Error")]
-        public void ReadTextMessage(byte[] encoded, MessageType messageType, string payload)
-        {
-            Assert.True(MessageFormatter.TryParseMessage(encoded, MessageFormat.Binary, out var message, out var consumed));
-            Assert.Equal(consumed, encoded.Length);
-
-            MessageTestUtils.AssertMessage(message, messageType, payload);
-        }
-
-        [Theory]
-        [InlineData(new byte[] { 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01 }, new byte[0])]
-        [InlineData(new byte[] { 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x04, 0x01, 0xAB, 0xCD, 0xEF, 0x12 }, new byte[] { 0xAB, 0xCD, 0xEF, 0x12 })]
-        public void ReadBinaryMessage(byte[] encoded, byte[] payload)
-        {
-            Assert.True(MessageFormatter.TryParseMessage(encoded, MessageFormat.Binary, out var message, out var consumed));
-            Assert.Equal(consumed, encoded.Length);
-
-            MessageTestUtils.AssertMessage(message, MessageType.Binary, payload);
-        }
-
-        [Fact]
-        public void ReadMultipleMessages()
-        {
-            var encoded = new byte[]
-            {
-                /* length: */ 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-                    /* type: */ 0x01, // Binary
-                    /* body: <empty> */
-                /* length: */ 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x0E,
-                    /* type: */ 0x00, // Text
-                    /* body: */ 0x48, 0x65, 0x6C, 0x6C, 0x6F, 0x2C, 0x0D, 0x0A, 0x57, 0x6F, 0x72, 0x6C, 0x64, 0x21,
-                /* length: */ 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01,
-                    /* type: */ 0x03, // Close
-                    /* body: */ 0x41,
-                /* length: */ 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x0C,
-                    /* type: */ 0x02, // Error
-                    /* body: */ 0x53, 0x65, 0x72, 0x76, 0x65, 0x72, 0x20, 0x45, 0x72, 0x72, 0x6F, 0x72
-            };
-            var reader = new BytesReader(new ReadOnlyBytes(encoded));
-
-            var messages = new List<Message>();
-            var consumedTotal = 0;
-            while (MessageFormatter.TryParseMessage(encoded, MessageFormat.Binary, out var message, out var consumed))
-            {
-                messages.Add(message);
-                consumedTotal += consumed;
-                buffer = buffer.Slice(consumed);
-            }
-
-            Assert.Equal(consumedTotal, encoded.Length);
-
-            Assert.Equal(4, messages.Count);
-            MessageTestUtils.AssertMessage(messages[0], MessageType.Binary, new byte[0]);
-            MessageTestUtils.AssertMessage(messages[1], MessageType.Text, "Hello,\r\nWorld!");
-            MessageTestUtils.AssertMessage(messages[2], MessageType.Close, "A");
-            MessageTestUtils.AssertMessage(messages[3], MessageType.Error, "Server Error");
-        }
-
-        [Theory]
-        [InlineData(new byte[0])] // Empty
-        [InlineData(new byte[] { 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 })] // Just length
-        [InlineData(new byte[] { 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x09, 0x00, 0x00, 0x00 })] // Not enough data for payload
-        [InlineData(new byte[] { 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x04 })] // Invalid Type
-        public void ReadInvalidMessages(byte[] encoded)
-        {
-            Assert.False(MessageFormatter.TryParseMessage(encoded, MessageFormat.Binary, out var message, out var consumed));
-            Assert.Equal(0, consumed);
         }
     }
 }
