@@ -97,26 +97,22 @@ namespace Microsoft.AspNetCore.Sockets.Client
                 {
                     Interlocked.Exchange(ref _connectionState, ConnectionState.Disconnected);
 
-                    _eventQueue.Enqueue(queue => {
-                        ((TaskQueue)queue).Drain();
-                        // Do not "simplify" - events can be removed from a different thread
-                        var closedEventHandler = Closed;
-                        if (closedEventHandler != null)
-                        {
-                            closedEventHandler(t.IsFaulted ? t.Exception.InnerException : null);
-                        }
+                    await _eventQueue.Drain();
 
-                        return Task.CompletedTask;
-                    }, _eventQueue);
+                    // Do not "simplify" - event handlers can be removed from a different thread
+                    var closedEventHandler = Closed;
+                    if (closedEventHandler != null)
+                    {
+                        closedEventHandler(t.IsFaulted ? t.Exception.InnerException : null);
+                    }
+
+                    return Task.CompletedTask;
                 });
 
-                // start receive loop
+                // start receive loop only after the Connected event was raised to
+                // avoid Received event being raised before the Connected event
                 _receiveLoopTask = ReceiveAsync();
             }
-
-            // start receive loop only after the Connected event was raised to
-            // avoid Received event being raised before the Connected event
-            _receiveLoopTask = ReceiveAsync();
         }
 
         private static async Task<Uri> GetConnectUrl(Uri url, HttpClient httpClient, ILogger logger)
@@ -196,7 +192,7 @@ namespace Microsoft.AspNetCore.Sockets.Client
                         _logger.LogDebug("Scheduling raising Received event.");
                         var ignore = _eventQueue.Enqueue(() => 
                         {
-                            // Do not "simplify" - events can be removed from a different thread
+                            // Do not "simplify" - event handlers can be removed from a different thread
                             var receivedEventHandler = Received;
                             if (receivedEventHandler != null)
                             {
