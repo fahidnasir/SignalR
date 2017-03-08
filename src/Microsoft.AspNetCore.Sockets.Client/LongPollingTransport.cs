@@ -88,34 +88,33 @@ namespace Microsoft.AspNetCore.Sockets.Client
                     {
                         // Until Pipeline starts natively supporting BytesReader, this is the easiest way to do this.
                         var payload = await response.Content.ReadAsByteArrayAsync();
-                        var reader = new BytesReader(payload);
-                        if(reader.Unread.Length == 0)
+                        if (payload.Length > 0)
                         {
-                            throw new FormatException("Response from the server is missing format specifier");
-                        }
-                        var messageFormat = MessageParser.GetFormat(reader.Unread[0]);
-                        reader.Advance(1);
+                            var reader = new BytesReader(payload);
+                            var messageFormat = MessageParser.GetFormat(reader.Unread[0]);
+                            reader.Advance(1);
 
-                        _parser.Reset();
-                        while(_parser.TryParseMessage(ref reader, messageFormat, out var message))
-                        {
-                            while(!_application.Output.TryWrite(message))
+                            _parser.Reset();
+                            while (_parser.TryParseMessage(ref reader, messageFormat, out var message))
                             {
-                                if(cancellationToken.IsCancellationRequested || !await _application.Output.WaitToWriteAsync(cancellationToken))
+                                while (!_application.Output.TryWrite(message))
                                 {
-                                    return;
+                                    if (cancellationToken.IsCancellationRequested || !await _application.Output.WaitToWriteAsync(cancellationToken))
+                                    {
+                                        return;
+                                    }
                                 }
                             }
-                        }
 
-                        // Since we pre-read the whole payload, we know that when this fails we have read everything.
-                        // Once Pipelines natively support BytesReader, we could get into situations where the data for
-                        // a message just isn't available yet.
+                            // Since we pre-read the whole payload, we know that when this fails we have read everything.
+                            // Once Pipelines natively support BytesReader, we could get into situations where the data for
+                            // a message just isn't available yet.
 
-                        // If there's still data, we hit an incomplete message
-                        if(reader.Unread.Length > 0)
-                        {
-                            throw new FormatException("Incomplete message");
+                            // If there's still data, we hit an incomplete message
+                            if (reader.Unread.Length > 0)
+                            {
+                                throw new FormatException("Incomplete message");
+                            }
                         }
                     }
                 }

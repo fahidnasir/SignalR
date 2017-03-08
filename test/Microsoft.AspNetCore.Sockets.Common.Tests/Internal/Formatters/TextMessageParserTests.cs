@@ -59,13 +59,12 @@ namespace Microsoft.AspNetCore.Sockets.Common.Tests.Internal.Formatters
             var reader = new BytesReader(buffer);
 
             var messages = new List<Message>();
-            var consumedTotal = 0;
             while (parser.TryParseMessage(ref reader, MessageFormat.Text, out var message))
             {
                 messages.Add(message);
             }
 
-            Assert.Equal(consumedTotal, Encoding.UTF8.GetByteCount(encoded));
+            Assert.Equal(reader.Index, Encoding.UTF8.GetByteCount(encoded));
 
             Assert.Equal(4, messages.Count);
             MessageTestUtils.AssertMessage(messages[0], MessageType.Binary, new byte[0]);
@@ -76,6 +75,8 @@ namespace Microsoft.AspNetCore.Sockets.Common.Tests.Internal.Formatters
 
         [Theory]
         [InlineData("")]
+        [InlineData("ABC")]
+        [InlineData("1230450945")]
         [InlineData("5:T:A")]
         [InlineData("5:T:ABCDE")]
         [InlineData("5:T:ABCDEF")]
@@ -88,9 +89,7 @@ namespace Microsoft.AspNetCore.Sockets.Common.Tests.Internal.Formatters
         }
 
         [Theory]
-        [InlineData("ABC", "")]
-        [InlineData("1230450945", "")]
-        [InlineData("5:X:ABCDEF", "")]
+        [InlineData("5:X:ABCDEF", "Unknown message type: 'X'")]
         [InlineData("1:asdf", "Unknown message type: 'a'")]
         [InlineData("1::", "Unknown message type: ':'")]
         [InlineData("1:AB:", "Unknown message type: 'A'")]

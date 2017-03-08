@@ -41,7 +41,6 @@ namespace Microsoft.AspNetCore.Sockets.Transports
             {
                 while (await _application.WaitToReadAsync(token))
                 {
-                    var buffer = pipe.Alloc();
                     while (_application.TryRead(out var message))
                     {
                         if (!ServerSentEventsMessageFormatter.TryWriteMessage(message, output))

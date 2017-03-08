@@ -20,18 +20,19 @@ namespace Microsoft.AspNetCore.Sockets.Internal.Formatters
         {
             if (_state.Length == null)
             {
-                var length = buffer.ReadBytes(sizeof(long)).ToSingleSpan();
-                if (length.Length < sizeof(long))
+                var length = buffer.TryReadBytes(sizeof(long))?.ToSingleSpan();
+                if (length == null || length.Value.Length < sizeof(long))
                 {
                     message = default(Message);
                     return false;
                 }
 
-                var longLength = length.ReadBigEndian<long>();
+                var longLength = length.Value.ReadBigEndian<long>();
                 if (longLength > Int32.MaxValue)
                 {
                     throw new FormatException("Messages over 2GB in size are not supported");
                 }
+                buffer.Advance(length.Value.Length);
                 _state.Length = (int)longLength;
             }
 
@@ -64,15 +65,18 @@ namespace Microsoft.AspNetCore.Sockets.Internal.Formatters
                 // Copy what we can from the current unread segment
                 var toCopy = Math.Min(_state.Payload.Length - _state.Read, buffer.Unread.Length);
                 buffer.Unread.Slice(0, toCopy).CopyTo(_state.Payload.Slice(_state.Read));
-                _state.Read += buffer.Unread.Length;
-                buffer.Advance(buffer.Unread.Length);
+                _state.Read += toCopy;
+                buffer.Advance(toCopy);
             }
 
-            if (_state.Read == _state.Payload.Length)
+            if (_state.Read >= _state.Payload.Length)
             {
                 message = new Message(_state.Payload, _state.MessageType.Value);
+                Reset();
                 return true;
             }
+
+            // There's still more to read.
 
             message = default(Message);
             return false;

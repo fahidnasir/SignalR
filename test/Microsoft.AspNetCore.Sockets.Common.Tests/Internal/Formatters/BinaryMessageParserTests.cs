@@ -1,6 +1,7 @@
 ﻿// Copyright (c) .NET Foundation. All rights reserved.
 // Licensed under the Apache License, Version 2.0. See License.txt in the project root for license information.
 
+using System;
 using System.Buffers;
 using System.Collections.Generic;
 using Microsoft.AspNetCore.Sockets.Internal.Formatters;
@@ -69,7 +70,7 @@ namespace Microsoft.AspNetCore.Sockets.Common.Tests.Internal.Formatters
                 messages.Add(message);
             }
 
-            Assert.Equal(reader.Index, encoded.Length);
+            Assert.Equal(encoded.Length, reader.Index);
 
             Assert.Equal(4, messages.Count);
             MessageTestUtils.AssertMessage(messages[0], MessageType.Binary, new byte[0]);
@@ -79,10 +80,19 @@ namespace Microsoft.AspNetCore.Sockets.Common.Tests.Internal.Formatters
         }
 
         [Theory]
+        [InlineData(new byte[] { 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x04 }, "Unknown type value: 0x4")] // Invalid Type
+        public void ReadInvalidMessages(byte[] encoded, string message)
+        {
+            var parser = new MessageParser();
+            var reader = new BytesReader(new ReadOnlyBytes(encoded));
+            var ex = Assert.Throws<FormatException>(() => parser.TryParseMessage(ref reader, MessageFormat.Binary, out _));
+            Assert.Equal(message, ex.Message);
+        }
+
+        [Theory]
         [InlineData(new byte[0])] // Empty
         [InlineData(new byte[] { 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 })] // Just length
         [InlineData(new byte[] { 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x09, 0x00, 0x00, 0x00 })] // Not enough data for payload
-        [InlineData(new byte[] { 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x04 })] // Invalid Type
         public void ReadIncompleteMessages(byte[] encoded)
         {
             var parser = new MessageParser();
